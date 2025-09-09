@@ -1,0 +1,32 @@
+# Entorno virtual
+venv/
+.env
+*.pyc
+__pycache__/
+db.sqlite3
+
+# Archivos de migraciones compilados
+*/migrations/__pycache__/
+*.log
+
+# Archivos de VSCode / PyCharm
+.vscode/
+.idea/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos estáticos y media (se generan en producción)
+staticfiles/
+media/
+
+# Archivos de coverage/tests
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Archivos de compilación de Python
+*.egg-info/
+dist/
+build/

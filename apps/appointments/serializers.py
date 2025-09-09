@@ -1,0 +1,255 @@
+# apps/appointments/serializers.py
+
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import Appointment, PsychologistAvailability, TimeSlot
+from apps.professionals.serializers import ProfessionalProfileSerializer
+from datetime import datetime, timedelta
+
+User = get_user_model()
+
+
+class PsychologistAvailabilitySerializer(serializers.ModelSerializer):
+    psychologist_name = serializers.CharField(source='psychologist.get_full_name', read_only=True)
+    weekday_display = serializers.CharField(source='get_weekday_display', read_only=True)
+    
+    class Meta:
+        model = PsychologistAvailability
+        fields = [
+            'id', 'psychologist', 'psychologist_name', 'weekday', 
+            'weekday_display', 'start_time', 'end_time', 'is_active',
+            'blocked_dates'
+        ]
+        read_only_fields = ['id', 'psychologist_name', 'weekday_display']
+    
+    def validate(self, data):
+        if data.get('start_time') and data.get('end_time'):
+            if data['start_time'] >= data['end_time']:
+                raise serializers.ValidationError(
+                    "La hora de inicio debe ser menor que la hora de fin"
+                )
+        return data
+
+
+class TimeSlotSerializer(serializers.ModelSerializer):
+    psychologist_name = serializers.CharField(source='psychologist.get_full_name', read_only=True)
+    
+    class Meta:
+        model = TimeSlot
+        fields = ['id', 'psychologist', 'psychologist_name', 'date', 
+                  'start_time', 'end_time', 'is_available']
+        read_only_fields = ['id', 'psychologist_name']
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
+    psychologist_name = serializers.CharField(source='psychologist.get_full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    appointment_type_display = serializers.CharField(source='get_appointment_type_display', read_only=True)
+    
+    class Meta:
+        model = Appointment
+        fields = [
+            'id', 'patient', 'patient_name', 'psychologist', 'psychologist_name',
+            'appointment_date', 'start_time', 'end_time', 'appointment_type',
+            'appointment_type_display', 'status', 'status_display',
+            'reason_for_visit', 'notes', 'consultation_fee', 'is_paid',
+            'meeting_link', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'patient_name', 'psychologist_name', 'status_display',
+            'appointment_type_display', 'created_at', 'updated_at', 'end_time',
+            'consultation_fee'
+        ]
+    
+    def validate(self, data):
+        # Validar que la fecha no sea pasada
+        if 'appointment_date' in data:
+            if data['appointment_date'] < datetime.now().date():
+                raise serializers.ValidationError(
+                    "No se pueden agendar citas en fechas pasadas"
+                )
+        
+        # Validar disponibilidad del psicólogo
+        if 'psychologist' in data and 'appointment_date' in data and 'start_time' in data:
+            psychologist = data['psychologist']
+            appointment_date = data['appointment_date']
+            start_time = data['start_time']
+            
+            # Calcular end_time basado en la duración de sesión
+            if hasattr(psychologist, 'professional_profile'):
+                duration = psychologist.professional_profile.session_duration
+                start_datetime = datetime.combine(appointment_date, start_time)
+                end_datetime = start_datetime + timedelta(minutes=duration)
+                data['end_time'] = end_datetime.time()
+            
+            # Verificar disponibilidad
+            weekday = appointment_date.weekday()
+            availability = PsychologistAvailability.objects.filter(
+                psychologist=psychologist,
+                weekday=weekday,
+                is_active=True,
+                start_time__lte=start_time,
+                end_time__gte=data.get('end_time', start_time)
+            ).first()
+            
+            if not availability:
+                raise serializers.ValidationError(
+                    "El psicólogo no está disponible en este horario"
+                )
+            
+            # Verificar si la fecha está bloqueada
+            if str(appointment_date) in availability.blocked_dates:
+                raise serializers.ValidationError(
+                    "El psicólogo no está disponible en esta fecha"
+                )
+            
+            # Verificar conflictos con otras citas
+            conflicting_appointments = Appointment.objects.filter(
+                psychologist=psychologist,
+                appointment_date=appointment_date,
+                status__in=['pending', 'confirmed']
+            ).filter(
+                start_time__lt=data.get('end_time', start_time),
+                end_time__gt=start_time
+            )
+            
+            if self.instance:
+                conflicting_appointments = conflicting_appointments.exclude(pk=self.instance.pk)
+            
+            if conflicting_appointments.exists():
+                raise serializers.ValidationError(
+                    "Ya existe una cita en este horario"
+                )
+        
+        return data
+
+
+class AppointmentCreateSerializer(serializers.ModelSerializer):
+    """Serializer específico para crear citas"""
+    
+    class Meta:
+        model = Appointment
+        fields = [
+            'psychologist', 'appointment_date', 'start_time',
+            'appointment_type', 'reason_for_visit', 'notes'
+        ]
+    
+    def create(self, validated_data):
+        # El paciente es el usuario autenticado
+        validated_data['patient'] = self.context['request'].user
+        
+        # Calcular end_time
+        psychologist = validated_data['psychologist']
+        if hasattr(psychologist, 'professional_profile'):
+            duration = psychologist.professional_profile.session_duration
+            start_datetime = datetime.combine(
+                validated_data['appointment_date'],
+                validated_data['start_time']
+            )
+            end_datetime = start_datetime + timedelta(minutes=duration)
+            validated_data['end_time'] = end_datetime.time()
+            validated_data['consultation_fee'] = psychologist.professional_profile.consultation_fee
+        
+        return super().create(validated_data)
+
+
+class AvailablePsychologistSerializer(serializers.ModelSerializer):
+    """Serializer para mostrar psicólogos disponibles con sus slots de tiempo"""
+    professional_profile = ProfessionalProfileSerializer(read_only=True)
+    available_slots = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name',
+            'professional_profile', 'available_slots'
+        ]
+    
+    def get_available_slots(self, obj):
+        # Obtener los parámetros de búsqueda del contexto
+        request = self.context.get('request')
+        if not request:
+            return []
+        
+        date_str = request.query_params.get('date')
+        if not date_str:
+            return []
+        
+        try:
+            search_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return []
+        
+        # Obtener disponibilidad del día
+        weekday = search_date.weekday()
+        availabilities = obj.availabilities.filter(
+            weekday=weekday,
+            is_active=True
+        )
+        
+        slots = []
+        for availability in availabilities:
+            # Verificar si la fecha está bloqueada
+            if str(search_date) in availability.blocked_dates:
+                continue
+            
+            # Generar slots de tiempo disponibles
+            current_time = datetime.combine(search_date, availability.start_time)
+            end_time = datetime.combine(search_date, availability.end_time)
+            
+            # Duración de sesión
+            duration = 60  # Default
+            if hasattr(obj, 'professional_profile'):
+                duration = obj.professional_profile.session_duration
+            
+            while current_time + timedelta(minutes=duration) <= end_time:
+                slot_start = current_time.time()
+                slot_end = (current_time + timedelta(minutes=duration)).time()
+                
+                # Verificar si el slot está ocupado
+                is_booked = Appointment.objects.filter(
+                    psychologist=obj,
+                    appointment_date=search_date,
+                    start_time__lt=slot_end,
+                    end_time__gt=slot_start,
+                    status__in=['pending', 'confirmed']
+                ).exists()
+                
+                if not is_booked:
+                    slots.append({
+                        'start_time': slot_start.strftime('%H:%M'),
+                        'end_time': slot_end.strftime('%H:%M'),
+                        'is_available': True
+                    })
+                
+                current_time += timedelta(minutes=duration)
+        
+        return slots
+
+
+class AppointmentUpdateSerializer(serializers.ModelSerializer):
+    """Serializer para actualizar citas (cambiar estado, agregar notas)"""
+    
+    class Meta:
+        model = Appointment
+        fields = ['status', 'notes', 'meeting_link']
+    
+    def validate_status(self, value):
+        # Solo permitir ciertas transiciones de estado
+        if self.instance:
+            current_status = self.instance.status
+            valid_transitions = {
+                'pending': ['confirmed', 'cancelled'],
+                'confirmed': ['completed', 'cancelled', 'no_show'],
+                'cancelled': [],  # No se puede cambiar desde cancelado
+                'completed': [],  # No se puede cambiar desde completado
+                'no_show': []     # No se puede cambiar desde no_show
+            }
+            
+            if value not in valid_transitions.get(current_status, []):
+                raise serializers.ValidationError(
+                    f"No se puede cambiar de {current_status} a {value}"
+                )
+        
+        return value
