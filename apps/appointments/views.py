@@ -52,7 +52,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         # Filtrar por tipo de usuario
         if user.user_type == 'patient':
             queryset = queryset.filter(patient=user)
-        elif user.user_type == 'psychologist':
+        elif user.user_type == 'professional':
             queryset = queryset.filter(psychologist=user)
         
         # Filtros adicionales por query params
@@ -353,7 +353,7 @@ def search_available_psychologists(request):
     
     # Filtrar psicólogos con disponibilidad en ese día
     psychologists = User.objects.filter(
-        user_type='psychologist',
+        user_type='professional',
         is_active=True,
         availabilities__weekday=weekday,
         availabilities__is_active=True

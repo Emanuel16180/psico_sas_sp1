@@ -70,13 +70,13 @@ class Appointment(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='patient_appointments',
-        limit_choices_to={'user_type': 'professional'}
+        limit_choices_to={'user_type': 'patient'}
     )
     psychologist = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='psychologist_appointments',
-        limit_choices_to={'user_type': 'psychologist'}
+        limit_choices_to={'user_type': 'professional'}
     )
     
     # Información de la cita

@@ -13,7 +13,7 @@ class Command(BaseCommand):
     
     def handle(self, *args, **kwargs):
         # Obtener todos los psicólogos
-        psychologists = User.objects.filter(user_type='psychologist')
+        psychologists = User.objects.filter(user_type='professional')
         
         if not psychologists.exists():
             self.stdout.write(
