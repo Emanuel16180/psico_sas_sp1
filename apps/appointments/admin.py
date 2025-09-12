@@ -12,6 +12,7 @@ class PsychologistAvailabilityAdmin(admin.ModelAdmin):
     list_display = ('psychologist', 'get_weekday_display', 'start_time', 'end_time', 'is_active')
     list_filter = ('psychologist', 'weekday', 'is_active')
 
+    # Pequeña función para mostrar el nombre del día en lugar del número
     def get_weekday_display(self, obj):
         return obj.get_weekday_display()
     get_weekday_display.short_description = 'Día de la Semana'

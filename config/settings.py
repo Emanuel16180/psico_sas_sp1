@@ -32,6 +32,8 @@ ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="", cast=Csv())
 # Application definition
 
 INSTALLED_APPS = [
+      'channels',
+       'apps.chat', 
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -155,5 +157,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",      
     "http://127.0.0.1:8080",
 ]
+# config/settings.py (al final del archivo)
 
+# Configuración de ASGI para que Django Channels sea el punto de entrada
+ASGI_APPLICATION = 'config.asgi.application'
+
+# Configuración del "Channel Layer" que usará Redis como intermediario
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    },
+}
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

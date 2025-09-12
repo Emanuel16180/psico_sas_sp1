@@ -24,7 +24,7 @@ class PsychologistAvailability(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='availabilities',
-        limit_choices_to={'user_type': 'psychologist'}
+        limit_choices_to={'user_type': 'professional'}
     )
     weekday = models.IntegerField(choices=WEEKDAYS)
     start_time = models.TimeField()
@@ -70,7 +70,7 @@ class Appointment(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='patient_appointments',
-        limit_choices_to={'user_type': 'patient'}
+        limit_choices_to={'user_type': 'professional'}
     )
     psychologist = models.ForeignKey(
         settings.AUTH_USER_MODEL,

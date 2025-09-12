@@ -227,7 +227,7 @@ class PsychologistAvailabilityViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Crear disponibilidad (solo psicólogos para sí mismos)"""
-        if request.user.user_type != 'psychologist':
+        if request.user.user_type != 'professional':
             return Response(
                 {'error': 'Solo los psicólogos pueden crear disponibilidad'},
                 status=status.HTTP_403_FORBIDDEN
