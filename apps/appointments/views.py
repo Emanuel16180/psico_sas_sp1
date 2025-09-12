@@ -37,9 +37,7 @@ class IsOwnerOrPsychologist(permissions.BasePermission):
 class IsPsychologist(permissions.BasePermission):
     """Solo psicólogos pueden acceder"""
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.user_type == 'psychologist'
-
-
+        return request.user.is_authenticated and request.user.user_type == 'professional' # <-- CAMBIO AQUÍ
 class AppointmentViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar citas
