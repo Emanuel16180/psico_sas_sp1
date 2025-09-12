@@ -130,6 +130,12 @@ class CustomUser(AbstractUser):
         return today.year - self.date_of_birth.year - (
             (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
         )
+    def save(self, *args, **kwargs):
+        if not self.username:
+            # Si no hay username, lo generamos a partir del email
+            # para evitar errores de unicidad.
+            self.username = self.email.split('@')[0]
+        super().save(*args, **kwargs)
 
 
 class PatientProfile(models.Model):
