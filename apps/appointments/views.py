@@ -7,6 +7,8 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from datetime import datetime, timedelta
 from .models import Appointment, PsychologistAvailability, TimeSlot
+from apps.professionals.models import ProfessionalProfile
+from apps.professionals.models import ProfessionalProfile
 from .serializers import (
     AppointmentSerializer,
     AppointmentCreateSerializer,
@@ -415,6 +417,7 @@ def search_available_psychologists(request):
         'psychologists': serializer.data
     })
 
+# en apps/appointments/views.py
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -422,17 +425,16 @@ def get_psychologist_schedule(request, psychologist_id):
     """
     Obtener el horario completo de un psicólogo para una semana
     """
-    try:
-        psychologist = User.objects.get(
-            id=psychologist_id,
-            user_type='psychologist'
-        )
-    except User.DoesNotExist:
+    try: # <-- La indentación aquí está corregida
+        # Buscamos el PERFIL PROFESIONAL por su ID, no el ID de usuario
+        profile = ProfessionalProfile.objects.get(id=psychologist_id)
+        psychologist = profile.user
+    except ProfessionalProfile.DoesNotExist:
         return Response(
-            {'error': 'Psicólogo no encontrado'},
+            {'error': 'Perfil de Psicólogo no encontrado'},
             status=status.HTTP_404_NOT_FOUND
         )
-    
+
     # Obtener fecha de inicio (por defecto, esta semana)
     date_str = request.query_params.get('week_start')
     if date_str:
@@ -442,20 +444,19 @@ def get_psychologist_schedule(request, psychologist_id):
             week_start = datetime.now().date()
     else:
         week_start = datetime.now().date()
-    
+
     # Generar el horario de la semana
     schedule = []
     for i in range(7):
         current_date = week_start + timedelta(days=i)
         weekday = current_date.weekday()
-        
-        # Obtener disponibilidad para ese día
+
         availabilities = PsychologistAvailability.objects.filter(
             psychologist=psychologist,
             weekday=weekday,
             is_active=True
         )
-        
+
         day_schedule = {
             'date': current_date.strftime('%Y-%m-%d'),
             'weekday': weekday,
@@ -464,29 +465,25 @@ def get_psychologist_schedule(request, psychologist_id):
             'blocked': False,
             'time_slots': []
         }
-        
+
         for availability in availabilities:
-            # Verificar si está bloqueado
             if str(current_date) in availability.blocked_dates:
                 day_schedule['blocked'] = True
                 continue
-            
+
             day_schedule['is_available'] = True
-            
-            # Generar slots de tiempo
+
             current_time = datetime.combine(current_date, availability.start_time)
             end_time = datetime.combine(current_date, availability.end_time)
-            
-            # Duración de sesión
-            duration = 60  # Default
+
+            duration = 60
             if hasattr(psychologist, 'professional_profile'):
                 duration = psychologist.professional_profile.session_duration
-            
+
             while current_time + timedelta(minutes=duration) <= end_time:
                 slot_start = current_time.time()
                 slot_end = (current_time + timedelta(minutes=duration)).time()
-                
-                # Verificar si está ocupado
+
                 is_booked = Appointment.objects.filter(
                     psychologist=psychologist,
                     appointment_date=current_date,
@@ -494,18 +491,18 @@ def get_psychologist_schedule(request, psychologist_id):
                     end_time__gt=slot_start,
                     status__in=['pending', 'confirmed']
                 ).exists()
-                
+
                 day_schedule['time_slots'].append({
                     'start_time': slot_start.strftime('%H:%M'),
                     'end_time': slot_end.strftime('%H:%M'),
                     'is_available': not is_booked,
                     'is_booked': is_booked
                 })
-                
+
                 current_time += timedelta(minutes=duration)
-        
+
         schedule.append(day_schedule)
-    
+
     return Response({
         'psychologist': {
             'id': psychologist.id,
