@@ -132,12 +132,15 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 )
         
         return data
-
-
-
 class AppointmentCreateSerializer(serializers.ModelSerializer):
     """Serializer específico para crear citas"""
     
+    # --- ARREGLO 1: AÑADIR ESTA LÍNEA ---
+    # Esto le dice a DRF que use 'in_person' si el frontend no envía el dato,
+    # solucionando el error 400 45 (campo requerido).
+    appointment_type = serializers.CharField(default='in_person', required=False)
+
+
     class Meta:
         model = Appointment
         fields = [
@@ -145,7 +148,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             'appointment_type', 'reason_for_visit', 'notes'
         ]
 
-    # --- AÑADE LA FUNCIÓN 'validate' COMPLETA AQUÍ ---
+    # --- ARREGLO 2: LÓGICA DE VALIDACIÓN (La que te di antes) ---
     def validate(self, data):
         psychologist = data.get('psychologist')
         appointment_date = data.get('appointment_date')
@@ -159,18 +162,22 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
                 "No se pueden agendar citas en fechas pasadas"
             )
 
-        calculated_end_time = None
+        # Establecer la duración por defecto (igual que la vista get_schedule)
+        duration = 60  
         
+        # Si el perfil existe, sobrescribir la duración Y AÑADIR LA TARIFA.
         if hasattr(psychologist, 'professional_profile'):
-            duration = psychologist.professional_profile.session_duration
-            start_datetime = datetime.combine(appointment_date, start_time)
-            end_datetime = start_datetime + timedelta(minutes=duration)
-            calculated_end_time = end_datetime.time()
-            data['end_time'] = calculated_end_time
+            profile = psychologist.professional_profile
+            duration = profile.session_duration
+            data['consultation_fee'] = profile.consultation_fee
         
-        if not calculated_end_time:
-            raise serializers.ValidationError("No se pudo determinar la duración de la sesión del psicólogo.")
+        # Calcular siempre la hora de fin basado en la duración (real o por defecto)
+        start_datetime = datetime.combine(appointment_date, start_time)
+        end_datetime = start_datetime + timedelta(minutes=duration)
+        calculated_end_time = end_datetime.time()
+        data['end_time'] = calculated_end_time # Añadir la hora de fin a los datos validados
 
+        # Validar disponibilidad
         weekday = appointment_date.weekday()
         availability = PsychologistAvailability.objects.filter(
             psychologist=psychologist,
@@ -190,6 +197,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
                 "El psicólogo no está disponible en esta fecha"
             )
         
+        # Validar conflictos
         conflicting_appointments = Appointment.objects.filter(
             psychologist=psychologist,
             appointment_date=appointment_date,
@@ -199,22 +207,19 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             end_time__gt=start_time
         )
         
-        # (Nota: No necesitamos la lógica de 'self.instance' aquí porque esto SIEMPRE es para crear uno nuevo)
-        
         if conflicting_appointments.exists():
             raise serializers.ValidationError(
                 "Ya existe una cita en este horario"
             )
         
         return data
-    # --- FIN DE LA FUNCIÓN AÑADIDA ---
+
 
     def create(self, validated_data):
-        # (Esta función 'create' que ya tenías está correcta)
         validated_data['patient'] = self.context['request'].user
         
-        # El cálculo de end_time y fee ahora se hace en 'validate',
-        # pero lo dejamos aquí por seguridad si 'validate' no lo añade (aunque debería).
+        # Esta lógica de fallback ahora es redundante si la validación funciona bien,
+        # pero la mantenemos por seguridad.
         if 'end_time' not in validated_data and hasattr(validated_data['psychologist'], 'professional_profile'):
             psychologist = validated_data['psychologist']
             duration = psychologist.professional_profile.session_duration
@@ -224,10 +229,11 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             )
             end_datetime = start_datetime + timedelta(minutes=duration)
             validated_data['end_time'] = end_datetime.time()
-            validated_data['consultation_fee'] = psychologist.professional_profile.consultation_fee
+            
+            if 'consultation_fee' not in validated_data:
+                 validated_data['consultation_fee'] = psychologist.professional_profile.consultation_fee
         
         return super().create(validated_data)
-
 
 class AvailablePsychologistSerializer(serializers.ModelSerializer):
     """Serializer para mostrar psicólogos disponibles con sus slots de tiempo"""
