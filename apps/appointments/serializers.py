@@ -62,6 +62,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
             'consultation_fee'
         ]
     
+   # En apps/appointments/serializers.py, dentro de class AppointmentSerializer:
+
     def validate(self, data):
         # Validar que la fecha no sea pasada
         if 'appointment_date' in data:
@@ -69,19 +71,26 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "No se pueden agendar citas en fechas pasadas"
                 )
-        
+
         # Validar disponibilidad del psicólogo
-        if 'psychologist' in data and 'appointment_date' in data and 'start_time' in data:
-            psychologist = data['psychologist']
-            appointment_date = data['appointment_date']
-            start_time = data['start_time']
+        psychologist = data.get('psychologist')
+        appointment_date = data.get('appointment_date')
+        start_time = data.get('start_time')
+
+        if psychologist and appointment_date and start_time:
+            calculated_end_time = None # <-- Definimos la variable aquí
             
             # Calcular end_time basado en la duración de sesión
             if hasattr(psychologist, 'professional_profile'):
                 duration = psychologist.professional_profile.session_duration
                 start_datetime = datetime.combine(appointment_date, start_time)
                 end_datetime = start_datetime + timedelta(minutes=duration)
-                data['end_time'] = end_datetime.time()
+                calculated_end_time = end_datetime.time()
+                data['end_time'] = calculated_end_time # Lo añadimos a los datos
+
+            if not calculated_end_time:
+                # Si no se pudo calcular la hora de fin, detenemos la validación
+                raise serializers.ValidationError("No se pudo determinar la duración de la sesión.")
             
             # Verificar disponibilidad
             weekday = appointment_date.weekday()
@@ -90,7 +99,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 weekday=weekday,
                 is_active=True,
                 start_time__lte=start_time,
-                end_time__gte=data.get('end_time', start_time)
+                end_time__gte=calculated_end_time # <-- Usamos la variable calculada
             ).first()
             
             if not availability:
@@ -110,7 +119,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 appointment_date=appointment_date,
                 status__in=['pending', 'confirmed']
             ).filter(
-                start_time__lt=data.get('end_time', start_time),
+                start_time__lt=calculated_end_time, # <-- Usamos la variable calculada
                 end_time__gt=start_time
             )
             

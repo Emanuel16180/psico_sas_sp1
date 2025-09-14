@@ -94,11 +94,12 @@ class ProfessionalPublicSerializer(serializers.ModelSerializer):
     specializations = SpecializationSerializer(many=True, read_only=True)
     working_hours = WorkingHoursSerializer(many=True, read_only=True)
     full_name = serializers.CharField(source='user.get_full_name', read_only=True)
-    
+    user_id = serializers.ReadOnlyField(source='user.id') # <-- AÑADE ESTA LÍNEA
+
     class Meta:
         model = ProfessionalProfile
         fields = [
-            'id', 'full_name', 'bio', 'education', 'experience_years',
+            'id', 'user_id', 'full_name', 'bio', 'education', 'experience_years', # <-- AÑADE 'user_id' AQUÍ
             'consultation_fee', 'session_duration', 'accepts_online_sessions',
             'accepts_in_person_sessions', 'city', 'state', 'average_rating',
             'total_reviews', 'specializations', 'working_hours'
