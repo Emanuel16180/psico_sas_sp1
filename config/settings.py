@@ -13,7 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import dj_database_url
 from decouple import config, Csv  
-
+import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -68,7 +68,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+         'DIRS': [os.path.join(BASE_DIR, 'templates')], 
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -177,4 +177,22 @@ CHANNEL_LAYERS = {
         },
     },
 }
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# URL donde corre tu App de React (Vite usa el puerto 5173 por defecto)
+FRONTEND_URL_LOCAL = 'http://localhost:5173'
+# ---------------------------------------------------------------
+# CONFIGURACIÓN DE CORREO (SMTP DE GMAIL) PARA PSICO SAS
+# ---------------------------------------------------------------
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend' # <-- ¡LÍNEA CORREGIDA! (Sin el #)
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+# --- Tus Credenciales ---
+EMAIL_HOST_USER = 'isaelortiz74@gmail.com'
+EMAIL_HOST_PASSWORD = 'jyce eils gnvi vsju' 
+# -----------------------
+
+DEFAULT_FROM_EMAIL = 'Equipo de Psico SAS <isaelortiz74@gmail.com>'
+
+# Asegúrate de que la versión de consola ESTÉ comentada o eliminada:
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

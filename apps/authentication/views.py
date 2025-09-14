@@ -9,6 +9,11 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.conf import settings
+from django.core.mail import send_mail
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+
 from .serializers import (
     UserRegistrationSerializer, 
     UserLoginSerializer, 
@@ -67,7 +72,18 @@ def logout_user(request):
         return Response({'message': 'Sesión cerrada exitosamente'}, status=status.HTTP_200_OK)
     except:
         return Response({'error': 'Error al cerrar sesión'}, status=status.HTTP_400_BAD_REQUEST)
+# apps/authentication/views.py
 
+# --- 1. AÑADE ESTAS IMPORTACIONES AL INICIO DEL ARCHIVO ---
+from django.template.loader import render_to_string
+from django.conf import settings
+from django.core.mail import send_mail
+# ----------------------------------------------------
+
+# ... (aquí van tus otras vistas: register_user, login_user, etc.) ...
+
+
+# --- 2. REEMPLAZA TU VISTA password_reset_request CON ESTA ---
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def password_reset_request(request):
@@ -78,16 +94,35 @@ def password_reset_request(request):
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         
-        # En desarrollo se muestra en consola
-        reset_link = f"http://localhost:3000/reset-password/{uid}/{token}/"
-        print(f"Reset link: {reset_link}")
+        # Preparamos el contexto para la plantilla de correo
+        context = {
+            'email': user.email,
+            'user': user,
+            'uid': uid,
+            'token': token,
+            'FRONTEND_URL_LOCAL': settings.FRONTEND_URL_LOCAL, # Usamos la variable de settings.py
+        }
+
+        # Renderizamos la plantilla HTML que creamos en el Paso 1
+        email_body = render_to_string('registration/password_reset_email.html', context)
         
+        # Enviamos el correo
+        send_mail(
+            subject='Restablecimiento de contraseña para Psico SAS',
+            message=email_body, # Usamos el HTML como mensaje (los clientes de correo modernos lo renderizarán)
+            from_email=settings.DEFAULT_FROM_EMAIL, # Usará el correo que configuraste
+            recipient_list=[user.email],
+            html_message=email_body, # Le decimos que es HTML
+            fail_silently=False,
+        )
+
         return Response({
-            'message': 'Email enviado con instrucciones',
-            'reset_link': reset_link  # Solo para testing
+            'message': 'Si el correo está registrado, recibirás instrucciones en breve.'
         }, status=status.HTTP_200_OK)
+        
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# ... (El resto de tus vistas: password_reset_confirm, etc., se quedan igual) ...
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def password_reset_confirm(request):
