@@ -1,8 +1,8 @@
 # apps/chat/middleware.py
-
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from rest_framework.authtoken.models import Token
+from urllib.parse import parse_qs
 
 @database_sync_to_async
 def get_user(token_key):
@@ -17,13 +17,15 @@ class TokenAuthMiddleware:
         self.inner = inner
 
     async def __call__(self, scope, receive, send):
-        query_string = scope.get('query_string', b'').decode('utf-8')
-        query_params = dict(qp.split('=') for qp in query_string.split('&')) if query_string else {}
-        token_key = query_params.get('token')
+        query_string = scope.get("query_string", b"").decode("utf-8")
+        query_params = parse_qs(query_string)
+        token_key = query_params.get("token", [None])[0]
 
         if token_key:
             scope['user'] = await get_user(token_key)
         else:
-            scope['user'] = AnonymousUser()
-
+            # Si no hay token, intentará la autenticación por sesión (para la web)
+            # El AuthMiddlewareStack se encarga de esto antes que nuestro middleware
+            pass
+        
         return await self.inner(scope, receive, send)
