@@ -17,6 +17,12 @@ class TokenAuthMiddleware:
         self.inner = inner
 
     async def __call__(self, scope, receive, send):
+        # Si el usuario ya fue autenticado por el AuthMiddlewareStack (web), no hacemos nada.
+        # El AuthMiddlewareStack ya habrá poblado scope["user"].
+        if scope.get("user") and scope["user"].is_authenticated:
+            return await self.inner(scope, receive, send)
+
+        # Si no, buscamos un token en la URL (móvil).
         query_string = scope.get("query_string", b"").decode("utf-8")
         query_params = parse_qs(query_string)
         token_key = query_params.get("token", [None])[0]
@@ -24,8 +30,6 @@ class TokenAuthMiddleware:
         if token_key:
             scope['user'] = await get_user(token_key)
         else:
-            # Si no hay token, intentará la autenticación por sesión (para la web)
-            # El AuthMiddlewareStack se encarga de esto antes que nuestro middleware
-            pass
+            scope['user'] = AnonymousUser()
         
         return await self.inner(scope, receive, send)
